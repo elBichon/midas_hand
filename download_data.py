@@ -18,15 +18,19 @@ bet_fa = browser.find_element_by_id("dlIndices")
 bet_fa.send_keys('xcac40p')
 html = browser.page_source
 soup = BeautifulSoup(html, "html.parser")
-for data in soup.findAll('tr',{'class':'alri'}):
-    start = '<tr class="alri" data-name="'
+for data in soup.findAll('td',{'class':'srd'}):
+    start = '<td class="srd"><a href="/'
     end = '">'
-    epa_list.append((str(data).split(start))[1].split(end)[0])
+    try:
+        print((str(data).split(start))[1].split(end)[0])
+        epa_list.append((str(data).split(start))[1].split(end)[0])
+    except:
+        continue
 print(epa_list)
 
 i = 0
 while i < 3:#len(epa_list):
-    browser.get('https://www.abcbourse.com/download/download.aspx?s='+str(epa_list[i]))
+    browser.get('https://www.abcbourse.com/download/download.aspx?s='+str(epa_list[i].replace('cotation/','')))
     browser.implicitly_wait(10)
     sleep_time = 3 + randint(5,10)
     sleep(sleep_time)
@@ -38,5 +42,3 @@ while i < 3:#len(epa_list):
     submit_button = browser.find_elements_by_id('Button1')[0]
     submit_button.click()
     i += 1
-
-
