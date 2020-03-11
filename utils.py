@@ -7,13 +7,13 @@ import itertools
 from sklearn.preprocessing import StandardScaler
 from sklearn import preprocessing
 from sklearn.ensemble import IsolationForest
-from keras.models import Sequential
-from keras.layers import LSTM,Dense
+#from keras.models import Sequential
+#from keras.layers import LSTM,Dense
 from sklearn.preprocessing import MinMaxScaler
 from subprocess import check_output
-from keras.layers.core import Dense, Activation, Dropout
-from keras.layers.recurrent import LSTM
-from keras.models import Sequential
+#from keras.layers.core import Dense, Activation, Dropout
+#from keras.layers.recurrent import LSTM
+#from keras.models import Sequential
 #from sklearn.cross_validation import  train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
@@ -28,8 +28,10 @@ import utils
 def format_number(s):
     return float(s.replace(',', '.'))
 
+
 def date_corrector(s):
     return str(s[0:6]+'20'+s[6:8])
+
 
 def format_dataset(stock):
     df = pd.read_csv(stock,delimiter=';')
@@ -41,6 +43,7 @@ def format_dataset(stock):
     df.date = list(map(date_corrector,df.date))
     return df
 
+
 def get_movement(df,fft_100_close):
     i = 1
     close_value = df.fft_100_close.values.tolist()
@@ -50,92 +53,79 @@ def get_movement(df,fft_100_close):
         i += 1
     return pct_close_mvt
     
-def get_technical_indicators(df):
+
+def get_technical_indicators(df,fft_100):
     # Create 7 and 21 days Moving Average
-    df['ma20'] = df['fft_100_close'].rolling(window=20).mean()
-    df['ma50'] = df['fft_100_close'].rolling(window=50).mean()
-    df['ma150'] = df['fft_100_close'].rolling(window=150).mean()
-    df['amd20'] = df['fft_100_close'].ewm(span=20,adjust=False).mean()
-    df['amd50'] = df['fft_100_close'].ewm(span=50,adjust=False).mean()
+    df['ma20'] = df[fft_100].rolling(window=20).mean()
+    df['ma50'] = df[fft_100].rolling(window=50).mean()
+    df['ma150'] = df[fft_100].rolling(window=150).mean()
+    df['amd20'] = df[fft_100].ewm(span=20,adjust=False).mean()
+    df['amd50'] = df[fft_100].ewm(span=50,adjust=False).mean()
     df['var_mma'] = (df['ma50']-df['ma20'])
     df['var_amd'] = (df['amd50']-df['amd20'])
     # Create MACD
-    df['26ema'] = pd.ewma(df['fft_100_close'], span=26)
-    df['12ema'] = pd.ewma(df['fft_100_close'], span=12)
+    df['26ema'] = pd.ewma(df[fft_100], span=26)
+    df['12ema'] = pd.ewma(df[fft_100], span=12)
     df['MACD'] = (df['12ema']-df['26ema'])
     df['signal'] = pd.ewma(df['MACD'], span=9)
     df['var_macd'] = (df['MACD']-df['signal'])
     # Create Bollinger Bands
-    df['20sd'] = pd.stats.moments.rolling_std(df['fft_100_close'],20)
-    df['ma21'] = df['fft_100_close'].rolling(window=21).mean()
-    df['upper_band'] = df['ma21'] + (df['20sd']*2)
-    df['lower_band'] = df['ma21'] - (df['20sd']*2)
-    df['var_bollinger'] = df['upper_band']- df['lower_band']
+    #df['20sd'] = pd.stats.moments.rolling_std(df['fft_100_close'],20)
+    #df['ma21'] = df['fft_100_close'].rolling(window=21).mean()
+    #df['upper_band'] = df['ma21'] + (df['20sd']*2)
+    #df['lower_band'] = df['ma21'] - (df['20sd']*2)
+    #df['var_bollinger'] = df['upper_band']- df['lower_band']
     # Create Exponential moving average
     df['ema'] = df['MACD'].ewm(com=0.5).mean()
     return df
 
-def fourier_transform_close(df,fft_3_close,fft_6_close,fft_10_close,fft_100_close):
-    data_FT = df[['date', 'close']]
-    close_fft = np.fft.fft(np.asarray(data_FT['close'].tolist()))
-    fft_df = pd.DataFrame({'fft':close_fft})
+
+def computeRSI(data, time_window):
+    diff = data.diff(1).dropna()       
+    up_chg = 0 * diff
+    down_chg = 0 * diff
+    up_chg[diff > 0] = diff[ diff > 0 ]
+    down_chg[diff < 0] = diff[ diff < 0 ]
+    up_chg_avg   = up_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
+    down_chg_avg = down_chg.ewm(com=time_window-1 , min_periods=time_window).mean()
+    rs = abs(up_chg_avg/down_chg_avg)
+    rsi = 100 - 100/(1+rs)
+    return rsi
+
+def STOK(close, low, high, n): 
+    STOK = ((close - pd.rolling_min(low, n)) / (pd.rolling_max(high, n) -    pd.rolling_min(low, n))) * 100
+    return STOK
+
+def STOD(close, low, high, n):
+    STOK = ((close - pd.rolling_min(low, n)) / (pd.rolling_max(high, n) - pd.rolling_min(low, n))) * 100
+    STOD = pd.rolling_mean(STOK, 3)
+    return STOD
+
+
+def fourier_transform(df,column,fft_3,fft_6,fft_10,fft_20,fft_50,fft_100):
+    data_FT = df[['date', column]]
+    fft = np.fft.fft(np.asarray(data_FT[column].tolist()))
+    fft_df = pd.DataFrame({'fft':fft})
     fft_df['absolute'] = fft_df['fft'].apply(lambda x: np.abs(x))
     fft_df['angle'] = fft_df['fft'].apply(lambda x: np.angle(x))
     plt.figure(figsize=(14, 7), dpi=100)
     fft_list = np.asarray(fft_df['fft'].tolist())
-    for num_ in [3,6,10,100]:
+    for num_ in [3,6,10,20,50,100]:
         fft_list_m10=np.copy(fft_list); fft_list_m10[num_:-num_]=0
         if num_ == 3:
-            fft_3_close.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
+            fft_3.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
         if num_ == 6:
-            fft_6_close.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
+            fft_6.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
         if num_ == 10:
-            fft_10_close.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
+            fft_10.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
+        if num_ == 20:
+            fft_20.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
+        if num_ == 50:
+            fft_50.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
         if num_ == 100:
-            fft_100_close.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
+            fft_100.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
     return(fft_df)
 
-def fourier_transform_low(df,fft_3_low,fft_6_low,fft_10_low,fft_100_low):
-    data_FT = df[['date', 'low']]
-    low_fft = np.fft.fft(np.asarray(data_FT['low'].tolist()))
-    fft_df = pd.DataFrame({'fft':low_fft})
-    fft_df['absolute'] = fft_df['fft'].apply(lambda x: np.abs(x))
-    fft_df['angle'] = fft_df['fft'].apply(lambda x: np.angle(x))
-    plt.figure(figsize=(14, 7), dpi=100)
-    fft_list = np.asarray(fft_df['fft'].tolist())
-    for num_ in [3,6,10,100]:
-        fft_list_m10=np.copy(fft_list); fft_list_m10[num_:-num_]=0
-        if num_ == 3:
-            fft_3_low.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-        if num_ == 6:
-            fft_6_low.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-        if num_ == 10:
-            fft_10_low.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-        fft_list_m10=np.copy(fft_list); fft_list_m10[num_:-num_]=0
-        if num_ == 100:
-            fft_100_low.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-    return(fft_df)
-
-def fourier_transform_high(df,fft_3_high,fft_6_high,fft_10_high,fft_100_high):
-    data_FT = df[['date', 'high']]
-    high_fft = np.fft.fft(np.asarray(data_FT['high'].tolist()))
-    fft_df = pd.DataFrame({'fft':high_fft})
-    fft_df['absolute'] = fft_df['fft'].apply(lambda x: np.abs(x))
-    fft_df['angle'] = fft_df['fft'].apply(lambda x: np.angle(x))
-    plt.figure(figsize=(14, 7), dpi=100)
-    fft_list = np.asarray(fft_df['fft'].tolist())
-    for num_ in [3,6,10,100]:
-        fft_list_m10=np.copy(fft_list); fft_list_m10[num_:-num_]=0
-        if num_ == 3:
-            fft_3_high.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-        if num_ == 6:
-            fft_6_high.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-        if num_ == 10:
-            fft_10_high.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-        fft_list_m10=np.copy(fft_list); fft_list_m10[num_:-num_]=0
-        if num_ == 100:
-            fft_100_high.append(list(np.fft.ifft(fft_list_m10).real.tolist()))
-    return(fft_df)
 
 def generate_momentum(fft,momentum):
     i = 0
@@ -150,6 +140,7 @@ def generate_momentum(fft,momentum):
             momentum[i] = 0
         i += 1
     return(momentum)
+
 
 #Create a function to process the data into 7 day look back slices
 def processData(data,lb):
@@ -168,12 +159,104 @@ def create_dataset(dataset, look_back):
         dataY.append(dataset[i + look_back, 0])
     return np.array(dataX), np.array(dataY)
 
+
 def format_data(df, fft_to_format):
     stock_prices = df[fft_to_format].values.astype('float32')
     stock_prices = stock_prices.reshape(len(stock_prices), 1)
     scaler = MinMaxScaler(feature_range=(0, 1))
     stock_prices = scaler.fit_transform(stock_prices)
     return(stock_prices)
+
+
+def trend_estimation(fft20_low,fft20_high,variation_low,variation_high,variation):
+    i = 1
+    while i < len(fft20_low):
+        if fft20_low[i]-fft20_low[i-1] > 0:
+            variation_low.append(1)
+        else:
+            variation_low.append(0)
+        i += 1
+    i = 1
+    while i < len(fft20_high):
+        if fft20_high[i]-fft20_high[i-1] > 0:
+            variation_high.append(1)
+        else:
+            variation_high.append(0)
+        i += 1
+    i = 0
+    while i < len(variation_high):
+        if variation_low[i] == 0 and variation_high[i] == 0:
+            variation.append(-1)
+        elif variation_low[i] == 1 and variation_high[i] == 1:
+            variation.append(1)
+        else:
+            variation.append(0)
+        i += 1
+    return(variation)
+
+
+#def compute_stochastic(k_list,d_list,k_value,d_value):
+#    i = 0
+#    while i < len(k_list):
+#        if k_list[i] > 80:
+#            k_indicator.append(1)
+#            k_value.append(k_list[i])
+#        elif k_list[i] < 20:
+#            k_indicator.append(-1)
+#            k_value.append(k_list[i])
+#        else:
+#            k_indicator.append(0)
+#            k_value.append(0)
+#        if d_list[i] > 80:
+#            d_indicator.append(1)
+#            d_value.append(d_list[i])
+#        elif d_list[i] < 20:
+#            d_indicator.append(-1)
+#            d_value.append(d_list[i])
+#        else:
+#            d_indicator.append(0)
+#            d_value.append(0)
+#        i += 1
+
+
+def rsi_indicator(rsi_list,rsi):
+    i = 0
+    while i < len(rsi_list):
+        if rsi_list[i] > 80:
+            rsi.append(1)
+        elif rsi_list[i] < 20:
+            rsi.append(-1)
+        else:
+            rsi.append(0)
+        i += 1
+    return(rsi)
+
+
+def compute_macd(var_macd_list,macd):
+    i = 0
+    while i < len(var_macd_list):
+        if var_macd_list[i] > 0:
+            macd.append(1)
+        elif var_macd_list[i] < 1:
+            macd.append(-1)
+        else:
+           macd.append(0)
+        i += 1
+    return(macd)    
+
+
+def compute_mma(var_mma_list,mma):
+    i = 0
+    while i < len(var_mma_list):
+        if var_mma_list[i] > 0:
+            mma.append(1)
+        elif var_mma_list[i] < 1:
+            mma.append(-1)
+        else:
+            mma.append(0)
+        i += 1
+    return(mma)
+
 
 def prediction_models(df,stock_prices,look_back, epochs, batch_size, model_name):
     stock_prices = df[stock_prices].values.astype('float32')
